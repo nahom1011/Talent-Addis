@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+campus_talent.db
+
+# Environment variables
+.env
+
+# Logs
+*.log
+output.log
+
+# IDEs
+.vscode/
+.idea/

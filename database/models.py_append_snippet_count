@@ -1,0 +1,6 @@
+
+async def get_comment_count(post_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute('SELECT COUNT(*) FROM comments WHERE post_id = ?', (post_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
