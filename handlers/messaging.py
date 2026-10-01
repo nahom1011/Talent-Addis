@@ -45,9 +45,14 @@ async def process_message_sending(message: types.Message, state: FSMContext):
     target_fake_name = data['target_fake_name']
     
     # Get Sender's Fake Profile
-    sender_user_row = await get_user_profile(message.from_user.id)
-    sender_fake_name = sender_user_row['fake_name'] if sender_user_row else "Stranger"
-    sender_fake_id = sender_user_row['fake_id'] if sender_user_row else "UNK"
+    from database.models import get_or_create_user_profile
+    sender_user_row = await get_or_create_user_profile(
+        message.from_user.id, 
+        username=message.from_user.username, 
+        full_name=message.from_user.full_name
+    )
+    sender_fake_name = sender_user_row['fake_name']
+    sender_fake_id = sender_user_row['fake_id']
     
     # Forward Message Logic (Send as Bot)
     try:

@@ -40,11 +40,12 @@ async def cmd_start(message: types.Message, command: CommandObject, state: FSMCo
                 await message.answer("❌ Invalid report link.")
         elif args.startswith("profile_"):
              try:
-                fake_id = args.split("_")[1]
+                fake_id = args[len("profile_"):].strip()
                 from handlers.secondary import show_public_profile
                 await show_public_profile(message, fake_id)
                 return
-             except Exception:
+             except Exception as e:
+                print(f"Error handling profile link: {e}")
                 await message.answer("❌ Invalid profile link.")
 
     from keyboards.builders import get_main_menu_keyboard
@@ -70,7 +71,6 @@ async def cmd_help(message: types.Message):
         "🔹 /dashboard — View your submissions\n\n"
         "👤 Profile & Sharing\n\n"
         "🔹 /profile — View your profile & badges\n"
-        "🔹 /story — Generate a story card\n"
         "🔹 /portfolio — Download your PDF folder\n\n"
         "🔍 Discover\n\n"
         "🔹 /top — View leaderboard\n\n"

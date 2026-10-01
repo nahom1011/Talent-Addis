@@ -47,7 +47,7 @@ async def admin_approve(callback: types.CallbackQuery, bot: Bot):
     # Post to Channel
     try:
         from keyboards.builders import get_reaction_keyboard, get_message_author_keyboard
-        from database.models import get_user_profile
+        from database.models import get_or_create_user_profile
         
         # Get post data again to ensure we have latest (since we just locked it)
         post = await get_post(post_id)
@@ -55,20 +55,24 @@ async def admin_approve(callback: types.CallbackQuery, bot: Bot):
              await callback.answer("❌ Post vanished.")
              return
              
+        # Fetch / Ensure User Profile exists
+        user_profile = await get_or_create_user_profile(
+            post['user_id'], 
+            username=post['username'], 
+            full_name=post['full_name']
+        )
+        fake_name = user_profile['fake_name']
+        fake_id = user_profile['fake_id']
+        
         # Determine attribution
         if post['is_anonymous']:
-             # Fetch Fake Profile
-             user_profile = await get_user_profile(post['user_id'])
-             fake_name = user_profile['fake_name'] if user_profile and user_profile['fake_name'] else "Anonymous"
-             fake_id = user_profile['fake_id'] if user_profile and user_profile['fake_id'] else "UNK"
-             
              author_text = f"{fake_name} ({fake_id})"
-             # Add Message Button
-             msg_kb = get_message_author_keyboard(fake_id)
         else:
              username = post['username'] if post['username'] else "Student"
              author_text = f"@{username}"
-             msg_kb = None
+             
+        # Add Profile Button
+        msg_kb = get_message_author_keyboard(fake_id)
 
         formatted_caption = f"#{html.quote(post['category'])}\n\n{html.quote(post['caption'])}\n\nBy: {html.quote(author_text)}"
         
@@ -265,6 +269,7 @@ async def cmd_reports(message: types.Message):
 @router.callback_query(F.data.startswith("resolve_report_"))
 async def resolve_report_action(callback: types.CallbackQuery):
     if str(callback.from_user.id) not in ADMIN_IDS:
+        await callback.answer("⛔ Admin access only.", show_alert=True)
         return
 
     parts = callback.data.split("_")
@@ -281,6 +286,9 @@ async def resolve_report_action(callback: types.CallbackQuery):
         return
     
     from database.models import resolve_report, update_post_status, get_post
+    import html
+
+    admin_name = callback.from_user.full_name or callback.from_user.username or "Admin"
     
     if action == "delete":
         if len(parts) < 5:
@@ -295,18 +303,39 @@ async def resolve_report_action(callback: types.CallbackQuery):
                 from utils.config import CHANNEL_ID
                 await callback.bot.delete_message(chat_id=CHANNEL_ID, message_id=int(post['message_id']))
             except Exception as e:
-                await callback.answer(f"⚠️ Channel Delete Failed: {e}", show_alert=True)
+                print(f"Channel Delete Failed: {e}")
                 
         # Mark post as rejected/deleted
         await update_post_status(post_id, 'deleted_by_moderation')
         await resolve_report(report_id, 'resolved_deleted')
-        await callback.message.edit_text(f"✅ Report #{report_id} Resolved: Post Deleted.")
+        
+        status_text = (
+            f"🗑️ <b>Report #{report_id} Resolved: Post #{post_id} Removed</b>\n\n"
+            f"Action taken by: {html.escape(admin_name)}"
+        )
+        try:
+            if callback.message.text:
+                await callback.message.edit_text(status_text, reply_markup=None)
+            elif callback.message.caption:
+                await callback.message.edit_caption(caption=status_text, reply_markup=None)
+        except Exception:
+            pass
+        await callback.answer("🗑️ Post removed from channel.")
         
     elif action == "ignore":
         await resolve_report(report_id, 'resolved_ignored')
-        await callback.message.edit_text(f"✅ Report #{report_id} Resolved: Ignore.")
-    
-    await callback.answer()
+        status_text = (
+            f"❌ <b>Report #{report_id} Cancelled / Dismissed</b>\n\n"
+            f"Post was kept in channel by: {html.escape(admin_name)}"
+        )
+        try:
+            if callback.message.text:
+                await callback.message.edit_text(status_text, reply_markup=None)
+            elif callback.message.caption:
+                await callback.message.edit_caption(caption=status_text, reply_markup=None)
+        except Exception:
+            pass
+        await callback.answer("Report cancelled / dismissed.")
 
 
 @router.message(Command("stats"))

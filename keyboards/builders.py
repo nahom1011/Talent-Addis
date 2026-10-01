@@ -5,8 +5,7 @@ def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
     buttons = [
         [KeyboardButton(text="📤 Submit Talent")],
         [KeyboardButton(text="👤 My Profile"), KeyboardButton(text="🏆 Leaderboard")],
-        [KeyboardButton(text="📂 Dashboard"), KeyboardButton(text="📱 Story Card")],
-        [KeyboardButton(text="📄 My Portfolio")]
+        [KeyboardButton(text="📂 Dashboard"), KeyboardButton(text="📄 My Portfolio")]
     ]
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, persistent=True)
 
@@ -51,8 +50,9 @@ def get_skip_keyboard() -> InlineKeyboardMarkup:
 
 def get_message_author_keyboard(author_fake_id: str) -> InlineKeyboardMarkup:
     from utils.config import BOT_USERNAME
+    clean_id = str(author_fake_id).strip() if author_fake_id else ""
     buttons = [
-        [InlineKeyboardButton(text="👤 Check Profile", url=f"https://t.me/{BOT_USERNAME}?start=profile_{author_fake_id}")]
+        [InlineKeyboardButton(text="👤 Check Profile", url=f"https://t.me/{BOT_USERNAME}?start=profile_{clean_id}")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

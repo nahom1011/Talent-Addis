@@ -46,27 +46,48 @@ async def process_report_reason(callback: types.CallbackQuery):
     reporter_id = callback.from_user.id
     
     # Save report
-    await submit_report(post_id, reporter_id, reason_text)
+    report_id = await submit_report(post_id, reporter_id, reason_text)
     
     # Notify Admins
-    from utils.config import ADMIN_IDS
+    from utils.config import ADMIN_IDS, CHANNEL_ID
     from main import bot
     from database.models import get_post
     import html
     
     post = await get_post(post_id)
+    post_caption = post['caption'] if post and post['caption'] else 'No caption'
+    
     admin_msg = (
-        f"🚨 <b>New Report Submitted</b>\n\n"
+        f"🚨 <b>New Report Submitted</b> (Report #{report_id})\n\n"
         f"<b>Post ID:</b> {post_id}\n"
         f"<b>Reason:</b> {html.escape(reason_text)}\n"
         f"<b>Reporter:</b> {callback.from_user.id} (@{callback.from_user.username or 'N/A'})\n\n"
-        f"<b>Post Caption:</b>\n<i>{html.escape(post['caption'] if post else 'N/A')}</i>"
+        f"<b>Post Content:</b>\n<i>{html.escape(post_caption[:300])}</i>"
     )
+
+    admin_buttons = [
+        [
+            InlineKeyboardButton(text="🗑️ Remove Post", callback_data=f"resolve_report_{report_id}_delete_{post_id}"),
+            InlineKeyboardButton(text="❌ Cancel", callback_data=f"resolve_report_{report_id}_ignore")
+        ]
+    ]
+
+    # Add direct channel link if available
+    if post and post['message_id'] and CHANNEL_ID:
+        post_link = None
+        if str(CHANNEL_ID).startswith("@"):
+            post_link = f"https://t.me/{str(CHANNEL_ID).lstrip('@')}/{post['message_id']}"
+        elif str(CHANNEL_ID).startswith("-100"):
+            post_link = f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{post['message_id']}"
+        if post_link:
+            admin_buttons.insert(0, [InlineKeyboardButton(text="🔗 View Post in Channel", url=post_link)])
+
+    admin_kb = InlineKeyboardMarkup(inline_keyboard=admin_buttons)
     
     for admin_id in ADMIN_IDS:
         try:
-            if admin_id:
-                await bot.send_message(chat_id=admin_id, text=admin_msg)
+            if admin_id and str(admin_id).strip():
+                await bot.send_message(chat_id=int(str(admin_id).strip()), text=admin_msg, reply_markup=admin_kb)
         except Exception as e:
             print(f"Failed to notify admin {admin_id}: {e}")
 

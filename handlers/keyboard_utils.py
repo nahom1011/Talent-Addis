@@ -24,14 +24,15 @@ async def update_post_keyboard(bot: Bot, post_id: int):
          comment_kb = get_comment_controls_keyboard(post_id, comment_count)
          final_buttons.extend(comment_kb.inline_keyboard)
 
-    # 3. ID Request / Message Author
-    # Need to check anonymity
-    if post['is_anonymous']:
-         # Fetch Fake Profile
-         user_profile = await get_user_profile(post['user_id'])
-         fake_id = user_profile['fake_id'] if user_profile else "UNK"
-         msg_kb = get_message_author_keyboard(fake_id)
-         msg_kb = get_message_author_keyboard(fake_id)
+    # 3. Check Profile Button
+    from database.models import get_or_create_user_profile
+    user_profile = await get_or_create_user_profile(
+        post['user_id'], 
+        username=post['username'] if 'username' in post.keys() else None, 
+        full_name=post['full_name'] if 'full_name' in post.keys() else None
+    )
+    if user_profile and user_profile['fake_id']:
+         msg_kb = get_message_author_keyboard(user_profile['fake_id'])
          final_buttons.extend(msg_kb.inline_keyboard)
          
     # 4. Report Button (Fix: Restore if missing)

@@ -213,14 +213,13 @@ async def finalize_submission(message: types.Message, state: FSMContext):
     # Notify Admins
     from keyboards.admin_kb import get_admin_approval_keyboard
     from utils.config import ADMIN_IDS
-    from database.models import get_user_profile
+    from database.models import get_or_create_user_profile
 
     # Construct Admin Caption
+    user_profile = await get_or_create_user_profile(user_id, username=username)
+    fake_name = user_profile['fake_name']
+    fake_id = user_profile['fake_id']
     if is_anonymous:
-        # Fetch Fake Profile for Admin Context
-        user_profile = await get_user_profile(user_id)
-        fake_name = user_profile['fake_name'] if user_profile else "Anonymous"
-        fake_id = user_profile['fake_id'] if user_profile else "UNK"
         anon_tag = f"🎭 {fake_name} ({fake_id})"
     else:
         anon_tag = f"@{username} ({user_id})"

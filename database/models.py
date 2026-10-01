@@ -178,14 +178,21 @@ async def add_user(user_id, username, full_name):
     async with db.execute('SELECT fake_id FROM users WHERE user_id = ?', (user_id,)) as cursor:
         existing = await cursor.fetchone()
         
-    if not (existing and existing[0]):
+    if not (existing and existing[0] and existing[0] != 'UNK'):
         fake_name = generate_fake_name()
         fake_id = generate_fake_id()
         await db.execute('''
             INSERT OR IGNORE INTO users (user_id, username, full_name, fake_name, fake_id)
             VALUES (?, ?, ?, ?, ?)
         ''', (user_id, username, full_name, fake_name, fake_id))
-        await db.execute('UPDATE users SET fake_name=?, fake_id=? WHERE user_id=? AND fake_id IS NULL', (fake_name, fake_id, user_id))
+        await db.execute('''
+            UPDATE users 
+            SET fake_name = COALESCE(fake_name, ?),
+                fake_id = ?,
+                username = COALESCE(?, username),
+                full_name = COALESCE(?, full_name)
+            WHERE user_id = ? AND (fake_id IS NULL OR fake_id = '' OR fake_id = 'UNK')
+        ''', (fake_name, fake_id, username, full_name, user_id))
     else:
         await db.execute('UPDATE users SET username=?, full_name=? WHERE user_id=?', (username, full_name, user_id))
         
@@ -197,11 +204,54 @@ async def get_user_profile(user_id):
     async with db.execute('SELECT * FROM users WHERE user_id = ?', (user_id,)) as cursor:
         return await cursor.fetchone()
 
+async def get_or_create_user_profile(user_id, username=None, full_name=None):
+    """Guarantees a valid user row with fake_name and fake_id."""
+    user = await get_user_profile(user_id)
+    if not user or not user['fake_id'] or user['fake_id'] == 'UNK':
+        await add_user(user_id, username or "Student", full_name or "Anonymous")
+        user = await get_user_profile(user_id)
+    return user
+
 async def get_user_by_fake_id(fake_id):
+    if not fake_id:
+        return None
     db = await Database.get_db()
     db.row_factory = aiosqlite.Row
-    async with db.execute('SELECT * FROM users WHERE fake_id = ?', (fake_id,)) as cursor:
-        return await cursor.fetchone()
+    clean_id = str(fake_id).strip()
+    
+    # 1. Lookup by fake_id (case-insensitive)
+    async with db.execute('SELECT * FROM users WHERE LOWER(fake_id) = LOWER(?)', (clean_id,)) as cursor:
+        row = await cursor.fetchone()
+        if row:
+            return row
+            
+    # 2. Lookup by numeric user_id
+    if clean_id.isdigit():
+        async with db.execute('SELECT * FROM users WHERE user_id = ?', (int(clean_id),)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row
+
+    # 3. Lookup author by post_id (e.g., if link is post_<id> or numeric id matching a post)
+    post_id_candidate = clean_id.replace("post_", "") if clean_id.startswith("post_") else clean_id
+    if post_id_candidate.isdigit():
+        async with db.execute('''
+            SELECT u.* FROM posts p 
+            JOIN users u ON p.user_id = u.user_id 
+            WHERE p.post_id = ?
+        ''', (int(post_id_candidate),)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row
+
+    # 4. Lookup by username
+    clean_username = clean_id.lstrip("@").lower()
+    async with db.execute('SELECT * FROM users WHERE LOWER(username) = ?', (clean_username,)) as cursor:
+        row = await cursor.fetchone()
+        if row:
+            return row
+            
+    return None
 
 # --- Post Management ---
 async def create_post(user_id, category, content_type, is_anonymous, photo_id, caption, voice_id=None, comments_enabled=True):
@@ -398,13 +448,20 @@ async def cleanup_mapping_table(days=1):
     await db.commit()
 
 # --- Moderation ---
-async def submit_report(post_id: int, reporter_id: int, reason: str):
+async def submit_report(post_id: int, reporter_id: int, reason: str) -> int:
     db = await Database.get_db()
-    await db.execute('''
+    cursor = await db.execute('''
         INSERT INTO reports (post_id, reporter_id, reason)
         VALUES (?, ?, ?)
     ''', (post_id, reporter_id, reason))
     await db.commit()
+    return cursor.lastrowid
+
+async def get_report(report_id: int):
+    db = await Database.get_db()
+    db.row_factory = aiosqlite.Row
+    async with db.execute('SELECT * FROM reports WHERE report_id = ?', (report_id,)) as cursor:
+        return await cursor.fetchone()
 
 async def get_pending_reports():
     db = await Database.get_db()
